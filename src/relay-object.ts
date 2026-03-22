@@ -2,7 +2,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { RelayStub } from "./mcp-handler";
 import { handleMcpRequest } from "./mcp-handler";
-import { hashToken, generateToken } from "./auth";
+import { hashToken, generateToken, extractBearerToken } from "./auth";
 import type {
   Env,
   ToolInfo,
@@ -24,6 +24,8 @@ import { PROTOCOL_VERSION, TOOL_CALL_TIMEOUT_MS } from "./types";
 // ---------------------------------------------------------------------------
 // Meta-tool definitions (virtual tools served by the relay itself)
 // ---------------------------------------------------------------------------
+
+const MAX_LOCATION_NAME_LENGTH = 128;
 
 const META_TOOL_INDEX: ToolInfo = {
   name: "unifi_tool_index",
@@ -270,10 +272,26 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
   // WebSocket upgrade
   // -------------------------------------------------------------------------
 
-  private handleWebSocketUpgrade(request: Request): Response {
+  private async handleWebSocketUpgrade(request: Request): Promise<Response> {
     const upgradeHeader = request.headers.get("Upgrade");
     if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {
       return new Response("Expected WebSocket upgrade", { status: 426 });
+    }
+
+    // Pre-authenticate: require a valid Bearer token that matches a registered location
+    const token = extractBearerToken(request);
+    if (!token) {
+      return new Response("Unauthorized: missing Bearer token", { status: 401 });
+    }
+
+    const tokenHash = await hashToken(token);
+    const rows = this.ctx.storage.sql.exec(
+      `SELECT location_id FROM locations WHERE relay_token_hash = ?`,
+      tokenHash,
+    ).toArray();
+
+    if (rows.length === 0) {
+      return new Response("Unauthorized: invalid relay token", { status: 401 });
     }
 
     const pair = new WebSocketPair();
@@ -366,6 +384,13 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
       });
     }
 
+    if (locationName.length > MAX_LOCATION_NAME_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: `location_name exceeds maximum length of ${MAX_LOCATION_NAME_LENGTH} characters` }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
     const token = generateToken();
     const tokenHash = await hashToken(token);
     const locationId = crypto.randomUUID();
@@ -436,7 +461,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
         await this.handleRegister(ws, parsed as RegisterMessage);
         break;
       case "tool_result":
-        this.handleToolResult(parsed as ToolCallResponse);
+        this.handleToolResult(ws, parsed as ToolCallResponse);
         break;
       case "catalog_update":
         this.handleCatalogUpdate(ws, parsed as CatalogUpdateMessage);
@@ -472,6 +497,16 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
         type: "error",
         message: `Unsupported protocol version: ${msg.protocol_version}, expected ${PROTOCOL_VERSION}`,
         code: "PROTOCOL_MISMATCH",
+      });
+      return;
+    }
+
+    // Validate location name
+    if (msg.location_name && msg.location_name.length > MAX_LOCATION_NAME_LENGTH) {
+      this.sendWs(ws, {
+        type: "error",
+        message: `location_name exceeds maximum length of ${MAX_LOCATION_NAME_LENGTH} characters`,
+        code: "INVALID_INPUT",
       });
       return;
     }
@@ -539,10 +574,22 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
     this.sendWs(ws, response);
   }
 
-  private handleToolResult(msg: ToolCallResponse): void {
+  private handleToolResult(ws: WebSocket, msg: ToolCallResponse): void {
     const pending = this.pending.get(msg.call_id);
     if (!pending) {
       // Stale or duplicate result, ignore
+      return;
+    }
+
+    // Verify the sender is the location that received the original tool_call
+    try {
+      const attachment = ws.deserializeAttachment() as { locationId?: string } | null;
+      if (attachment?.locationId && attachment.locationId !== pending.locationId) {
+        // Result from a different location than expected — reject it
+        return;
+      }
+    } catch {
+      // No attachment — unregistered WebSocket, ignore
       return;
     }
 
@@ -815,7 +862,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
         reject(new Error(`Tool call timed out after ${TOOL_CALL_TIMEOUT_MS}ms`));
       }, TOOL_CALL_TIMEOUT_MS);
 
-      this.pending.set(callId, { resolve, reject, timeout });
+      this.pending.set(callId, { resolve, reject, timeout, locationId });
 
       const request: ToolCallRequest = {
         type: "tool_call",
@@ -861,7 +908,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
             reject(new Error(`Timed out after ${TOOL_CALL_TIMEOUT_MS}ms`));
           }, TOOL_CALL_TIMEOUT_MS);
 
-          this.pending.set(callId, { resolve, reject, timeout });
+          this.pending.set(callId, { resolve, reject, timeout, locationId });
 
           const request: ToolCallRequest = {
             type: "tool_call",
