@@ -62,7 +62,7 @@ export default {
       return jsonResponse(result);
     }
 
-    // WebSocket upgrade (sidecars — token validated inside DO)
+    // WebSocket upgrade (relay clients — token validated inside DO)
     if (url.pathname === "/ws" && request.headers.get("Upgrade") === "websocket") {
       const doId = env.RELAY.idFromName("singleton");
       const doStub = env.RELAY.get(doId);

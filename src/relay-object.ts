@@ -497,7 +497,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
     const locationName = rows[0].location_name as string;
     const now = Date.now();
 
-    // Update last_seen and location_name (sidecar may update its name)
+    // Update last_seen and location_name (relay client may update its name)
     this.ctx.storage.sql.exec(
       `UPDATE locations SET last_seen = ?, location_name = ? WHERE location_id = ?`,
       now,

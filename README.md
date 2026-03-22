@@ -18,14 +18,14 @@ Cloudflare Worker  ────────────────────�
                                                                 |
                                               WebSocket (WSS) /ws  (relay_token)
                                                                 |
-                                                     Sidecar process (local network)
+                                                   unifi-mcp-relay (local network)
                                                                 |
                                                     UniFi MCP Server (stdio/HTTP)
 ```
 
-The Durable Object persists location registrations in SQLite and maintains live WebSocket connections to one or more sidecars. When a tool call arrives from a cloud agent, the worker routes it to the appropriate sidecar and streams the result back.
+The Durable Object persists location registrations in SQLite and maintains live WebSocket connections to one or more relay clients. When a tool call arrives from a cloud agent, the worker routes it to the appropriate relay client and streams the result back.
 
-**Multi-location support:** Multiple sidecars can connect simultaneously, each representing a different physical location (home lab, branch office, customer site). Read-only tool calls are automatically fanned out to all connected locations and results are aggregated. Write operations require an explicit `__location` argument to target a specific site — useful for MSP workflows.
+**Multi-location support:** Multiple relay clients can connect simultaneously, each representing a different physical location (home lab, branch office, customer site). Read-only tool calls are automatically fanned out to all connected locations and results are aggregated. Write operations require an explicit `__location` argument to target a specific site — useful for MSP workflows.
 
 ---
 
@@ -51,9 +51,9 @@ wrangler secret put ADMIN_TOKEN    # authenticates admin API calls
 
 Choose strong random strings (e.g., `openssl rand -hex 32`).
 
-### 3. Configure the Sidecar
+### 3. Configure the Relay Client
 
-Generate a relay token for your location (see [Token Management](#token-management)), then follow the setup instructions in the [unifi-mcp](https://github.com/sirkirby/unifi-mcp) repository to connect the sidecar to this worker.
+Generate a relay token for your location (see [Token Management](#token-management)), then follow the setup instructions in the [unifi-mcp](https://github.com/sirkirby/unifi-mcp) repository to connect `unifi-mcp-relay` to this worker.
 
 ---
 
@@ -90,7 +90,7 @@ Secrets are set via `wrangler secret put` and are never exposed in source code o
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `TOOL_REGISTRATION_MODE` | `lazy` | Tool registration mode sent to sidecars. `lazy` registers only meta-tools (~200 tokens); `eager` registers all tools upfront (~5,000 tokens) |
+| `TOOL_REGISTRATION_MODE` | `lazy` | Tool registration mode sent to relay clients. `lazy` registers only meta-tools (~200 tokens); `eager` registers all tools upfront (~5,000 tokens) |
 
 Variables are set in `wrangler.toml` under `[vars]` or overridden via the Cloudflare dashboard.
 
@@ -102,7 +102,7 @@ Variables are set in `wrangler.toml` under `[vars]` or overridden via the Cloudf
 |-------|--------|------|---------|
 | `/health` | GET | None | Health check — returns `{"status":"ok"}` |
 | `/mcp` | POST | `AGENT_TOKEN` | MCP JSON-RPC endpoint for cloud agents |
-| `/ws` | GET | `relay_token` | WebSocket upgrade for sidecar connections |
+| `/ws` | GET | `relay_token` | WebSocket upgrade for relay client connections |
 | `/api/locations` | GET | `ADMIN_TOKEN` | List registered locations and connection status |
 | `/api/locations/token` | POST | `ADMIN_TOKEN` | Generate a relay token for a new location |
 
@@ -131,7 +131,7 @@ The relay always exposes three meta-tools regardless of registration mode:
 
 ## Token Management
 
-Each sidecar authenticates with the relay using a per-location relay token. Generate one via the admin API:
+Each relay client authenticates with the relay using a per-location relay token. Generate one via the admin API:
 
 ```bash
 curl -X POST https://your-worker.workers.dev/api/locations/token \
@@ -150,7 +150,7 @@ Response:
 }
 ```
 
-Store the `token` value securely — it is only returned once. Provide it to the sidecar as `UNIFI_MCP_RELAY_TOKEN` (see [unifi-mcp](https://github.com/sirkirby/unifi-mcp) for sidecar configuration).
+Store the `token` value securely — it is only returned once. Provide it to `unifi-mcp-relay` as `UNIFI_MCP_RELAY_TOKEN` (see [unifi-mcp](https://github.com/sirkirby/unifi-mcp) for relay client configuration).
 
 ### List Registered Locations
 
@@ -159,7 +159,7 @@ curl https://your-worker.workers.dev/api/locations \
   -H "Authorization: Bearer <admin-token>"
 ```
 
-Response includes `connected: true/false` indicating whether the sidecar WebSocket is currently active.
+Response includes `connected: true/false` indicating whether the relay client WebSocket is currently active.
 
 ---
 
@@ -175,7 +175,7 @@ Compatible clients include Claude connectors, ChatGPT plugins, n8n MCP nodes, an
 
 ### Multi-Location Writes
 
-When multiple sidecars are connected, write operations require a `__location` argument passed to `unifi_execute`:
+When multiple relay clients are connected, write operations require a `__location` argument passed to `unifi_execute`:
 
 ```json
 {
@@ -193,7 +193,7 @@ Read-only operations (tools with `readOnlyHint: true`) are automatically fanned 
 
 - **Timing-safe token comparison** — all token validation uses constant-time comparison to prevent timing attacks
 - **SHA-256 hashed storage** — relay tokens are stored as hashes in SQLite; the plaintext is never persisted
-- **Per-location isolation** — each sidecar is identified by its own relay token and location ID; locations cannot access each other's data
+- **Per-location isolation** — each relay client is identified by its own relay token and location ID; locations cannot access each other's data
 - **HTTPS/WSS transport** — all traffic is encrypted in transit; Cloudflare terminates TLS at the edge
 - **No credentials in config** — tokens and secrets are managed via `wrangler secret put`, never committed to source
 
@@ -201,4 +201,4 @@ Read-only operations (tools with `readOnlyHint: true`) are automatically fanned 
 
 ## Related
 
-- [unifi-mcp](https://github.com/sirkirby/unifi-mcp) — UniFi MCP server and sidecar that connects to this relay worker
+- [unifi-mcp](https://github.com/sirkirby/unifi-mcp) — UniFi MCP server and `unifi-mcp-relay` client that connects to this relay worker

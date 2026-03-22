@@ -41,7 +41,7 @@ export interface ToolInfo {
 }
 
 // ---------------------------------------------------------------------------
-// WebSocket messages — sidecar → worker (inbound)
+// WebSocket messages — relay client → worker (inbound)
 // ---------------------------------------------------------------------------
 
 export interface RegisterMessage {
@@ -77,7 +77,7 @@ export type InboundMessage =
   | HeartbeatMessage;
 
 // ---------------------------------------------------------------------------
-// WebSocket messages — worker → sidecar (outbound)
+// WebSocket messages — worker → relay client (outbound)
 // ---------------------------------------------------------------------------
 
 export interface RegisteredMessage {
