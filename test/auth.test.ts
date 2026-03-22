@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import {
   timingSafeEqual,
   validateBearerToken,
-  extractRelayToken,
+  extractBearerToken,
   hashToken,
   generateToken,
 } from "../src/auth";
@@ -70,26 +70,36 @@ describe("validateBearerToken", () => {
 });
 
 // ---------------------------------------------------------------------------
-// extractRelayToken
+// extractBearerToken
 // ---------------------------------------------------------------------------
-describe("extractRelayToken", () => {
+describe("extractBearerToken", () => {
   function makeRequest(headers: Record<string, string>): Request {
     return new Request("https://example.com", { headers });
   }
 
-  it("extracts the first subprotocol as the relay token", () => {
-    const req = makeRequest({ "Sec-WebSocket-Protocol": "relay-token-abc, chat, other" });
-    expect(extractRelayToken(req)).toBe("relay-token-abc");
+  it("extracts the Bearer token from the Authorization header", () => {
+    const req = makeRequest({ Authorization: "Bearer my-relay-token-abc" });
+    expect(extractBearerToken(req)).toBe("my-relay-token-abc");
   });
 
-  it("returns the only protocol when there is a single value", () => {
-    const req = makeRequest({ "Sec-WebSocket-Protocol": "relay-token-xyz" });
-    expect(extractRelayToken(req)).toBe("relay-token-xyz");
-  });
-
-  it("returns null when the Sec-WebSocket-Protocol header is missing", () => {
+  it("returns null when the Authorization header is missing", () => {
     const req = makeRequest({});
-    expect(extractRelayToken(req)).toBeNull();
+    expect(extractBearerToken(req)).toBeNull();
+  });
+
+  it("returns null for a non-Bearer scheme", () => {
+    const req = makeRequest({ Authorization: "Basic dXNlcjpwYXNz" });
+    expect(extractBearerToken(req)).toBeNull();
+  });
+
+  it("returns null for a malformed header (no space)", () => {
+    const req = makeRequest({ Authorization: "BearerNoSpace" });
+    expect(extractBearerToken(req)).toBeNull();
+  });
+
+  it("is case-insensitive for the Bearer scheme", () => {
+    const req = makeRequest({ Authorization: "bearer my-token" });
+    expect(extractBearerToken(req)).toBe("my-token");
   });
 });
 

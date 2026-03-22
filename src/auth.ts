@@ -41,17 +41,21 @@ export function validateBearerToken(request: Request, expectedToken: string): bo
 }
 
 /**
- * Extracts the relay token from the Sec-WebSocket-Protocol header.
- * Returns the first subprotocol value, or null if the header is missing.
+ * Extracts a Bearer token from the Authorization header.
+ * Returns the token string, or null if the header is missing or malformed.
  */
-export function extractRelayToken(request: Request): string | null {
-  const header = request.headers.get("Sec-WebSocket-Protocol");
-  if (!header) {
+export function extractBearerToken(request: Request): string | null {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader) {
     return null;
   }
 
-  const protocols = header.split(",").map((p) => p.trim());
-  return protocols[0] || null;
+  const parts = authHeader.split(" ");
+  if (parts.length !== 2 || parts[0].toLowerCase() !== "bearer") {
+    return null;
+  }
+
+  return parts[1] || null;
 }
 
 /**

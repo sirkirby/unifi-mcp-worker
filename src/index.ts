@@ -5,30 +5,32 @@ import { validateBearerToken } from "./auth";
 // Re-export the Durable Object class (required by wrangler)
 export { RelayObject } from "./relay-object";
 
-function corsHeaders(): Record<string, string> {
+function corsHeaders(origin?: string | null): Record<string, string> {
   return {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": origin || "",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
   };
 }
 
-function jsonResponse(data: unknown, status = 200): Response {
-  return Response.json(data, { status, headers: corsHeaders() });
+function jsonResponse(data: unknown, request: Request, status = 200): Response {
+  const origin = request.headers.get("Origin") || "";
+  return Response.json(data, { status, headers: corsHeaders(origin) });
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const origin = request.headers.get("Origin") || "";
 
     // CORS preflight
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders() });
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
     // Health check (no auth)
     if (url.pathname === "/health") {
-      return jsonResponse({ status: "ok" });
+      return jsonResponse({ status: "ok" }, request);
     }
 
     // MCP endpoint (cloud agents — authenticated with AGENT_TOKEN)
@@ -43,6 +45,7 @@ export default {
       } catch {
         return jsonResponse(
           { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } },
+          request,
           400,
         );
       }
@@ -59,7 +62,7 @@ export default {
       );
 
       const result = await doResponse.json();
-      return jsonResponse(result);
+      return jsonResponse(result, request);
     }
 
     // WebSocket upgrade (relay clients — token validated inside DO)
@@ -81,10 +84,10 @@ export default {
       const responseBody = await doResponse.text();
       return new Response(responseBody, {
         status: doResponse.status,
-        headers: { ...Object.fromEntries(doResponse.headers), ...corsHeaders() },
+        headers: { ...Object.fromEntries(doResponse.headers), ...corsHeaders(origin) },
       });
     }
 
-    return new Response("Not Found", { status: 404, headers: corsHeaders() });
+    return new Response("Not Found", { status: 404, headers: corsHeaders(origin) });
   },
 };
