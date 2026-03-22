@@ -50,7 +50,7 @@ export interface RegisterMessage {
   token: string;
   location_name: string;
   tools: ToolInfo[];
-  capabilities: Record<string, unknown>;
+  capabilities: string[];
 }
 
 export interface ToolCallResponse {
@@ -63,7 +63,7 @@ export interface ToolCallResponse {
 export interface CatalogUpdateMessage {
   type: "catalog_update";
   tools: ToolInfo[];
-  capabilities: Record<string, unknown>;
+  capabilities: string[];
 }
 
 export interface HeartbeatMessage {

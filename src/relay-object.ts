@@ -123,6 +123,8 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
   private locationTools = new Map<string, ToolInfo[]>();
   /** tool_name -> list of location_ids that provide it */
   private toolToLocations = new Map<string, string[]>();
+  /** location_id -> active WebSocket for O(1) lookup */
+  private locationWebSockets = new Map<string, WebSocket>();
   /** call_id -> pending promise waiting for a tool_result */
   private pending = new Map<string, PendingRequest>();
   /** Whether in-memory state has been rebuilt from SQLite since last wake */
@@ -141,7 +143,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS locations (
         location_id TEXT PRIMARY KEY,
-        location_name TEXT NOT NULL,
+        location_name TEXT NOT NULL UNIQUE,
         relay_token_hash TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         last_seen INTEGER NOT NULL
@@ -168,6 +170,19 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
   private rebuildInMemoryState(): void {
     this.locationTools.clear();
     this.toolToLocations.clear();
+
+    // Rebuild WebSocket map from hibernation-managed sockets
+    this.locationWebSockets.clear();
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        const attachment = ws.deserializeAttachment() as { locationId?: string } | null;
+        if (attachment?.locationId) {
+          this.locationWebSockets.set(attachment.locationId, ws);
+        }
+      } catch {
+        // skip websockets without valid attachment
+      }
+    }
 
     // Load all tools grouped by location
     const rows = this.ctx.storage.sql.exec(
@@ -359,8 +374,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
     this.ctx.storage.sql.exec(
       `INSERT INTO locations (location_id, location_name, relay_token_hash, created_at, last_seen)
        VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(location_id) DO UPDATE SET
-         location_name = excluded.location_name,
+       ON CONFLICT(location_name) DO UPDATE SET
          relay_token_hash = excluded.relay_token_hash,
          last_seen = excluded.last_seen`,
       locationId,
@@ -370,9 +384,17 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
       now,
     );
 
+    // When the conflict fires, the original location_id is preserved.
+    // Query back the actual ID so the response is correct.
+    const rows = this.ctx.storage.sql.exec(
+      `SELECT location_id FROM locations WHERE location_name = ?`,
+      locationName,
+    ).toArray();
+    const actualLocationId = (rows[0]?.location_id as string) || locationId;
+
     return new Response(
       JSON.stringify({
-        location_id: locationId,
+        location_id: actualLocationId,
         location_name: locationName,
         token,
       }),
@@ -505,6 +527,9 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
     // Attach location_id to the WebSocket for later identification
     ws.serializeAttachment({ locationId, locationName: msg.location_name || locationName });
 
+    // Cache the WebSocket for O(1) lookup
+    this.locationWebSockets.set(locationId, ws);
+
     // Send confirmation
     const response: RegisteredMessage = {
       type: "registered",
@@ -575,9 +600,10 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
     try {
       const attachment = ws.deserializeAttachment() as { locationId?: string } | null;
       if (attachment?.locationId) {
-        // Location disconnected -- in-memory state stays (tools are still in SQLite)
-        // but the location won't be routable until it reconnects.
-        // We do NOT remove from locationTools since tools persist in SQLite.
+        // Remove from WebSocket cache -- location is no longer routable.
+        // In-memory tool state stays (tools are still in SQLite) so the
+        // location will become routable again when it reconnects.
+        this.locationWebSockets.delete(attachment.locationId);
       }
     } catch {
       // No attachment, nothing to clean up
@@ -700,21 +726,23 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
       return { success: false, error: "Missing required argument: calls (array)" };
     }
 
-    const results: Array<{ tool_name: string; result?: unknown; error?: string }> = [];
-
-    for (const call of calls) {
-      try {
-        const callArgs = call.arguments || {};
+    const settled = await Promise.allSettled(
+      calls.map((call) => {
+        const callArgs = { ...(call.arguments || {}) };
         if (call.__location) {
           callArgs.__location = call.__location;
         }
-        const result = await this.routeToolCall(call.tool_name, callArgs);
-        results.push({ tool_name: call.tool_name, result });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        results.push({ tool_name: call.tool_name, error: msg });
+        return this.routeToolCall(call.tool_name, callArgs);
+      }),
+    );
+
+    const results: Array<{ tool_name: string; result?: unknown; error?: string }> = settled.map((outcome, i) => {
+      if (outcome.status === "fulfilled") {
+        return { tool_name: calls[i].tool_name, result: outcome.value };
       }
-    }
+      const msg = outcome.reason instanceof Error ? outcome.reason.message : "Unknown error";
+      return { tool_name: calls[i].tool_name, error: msg };
+    });
 
     return { success: true, data: { results, total: results.length } };
   }
@@ -904,17 +932,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
   }
 
   private findWebSocketForLocation(locationId: string): WebSocket | null {
-    for (const ws of this.ctx.getWebSockets()) {
-      try {
-        const attachment = ws.deserializeAttachment() as { locationId?: string } | null;
-        if (attachment?.locationId === locationId) {
-          return ws;
-        }
-      } catch {
-        // skip
-      }
-    }
-    return null;
+    return this.locationWebSockets.get(locationId) ?? null;
   }
 
   private getLocationName(locationId: string): string {

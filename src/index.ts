@@ -54,7 +54,7 @@ export default {
         new Request("https://relay-do/mcp", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...body, mode: env.TOOL_REGISTRATION_MODE ?? "lazy" }),
+          body: JSON.stringify(body),
         }),
       );
 
