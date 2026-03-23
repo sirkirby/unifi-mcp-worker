@@ -11,7 +11,7 @@ function getWorkerDir() {
   return join(cliDir, "..", "..", "worker");
 }
 
-export async function deploy(workerName) {
+export async function deploy(workerName, { customDomain } = {}) {
   const workerDir = getWorkerDir();
   // Install worker dependencies (including devDependencies — wrangler and
   // @cloudflare/workers-types are devDeps needed for the build step)
@@ -21,13 +21,19 @@ export async function deploy(workerName) {
   });
 
   const args = ["deploy", "--name", workerName];
+  if (customDomain) {
+    args.push("--route", `${customDomain}/*`);
+  }
   const { stdout, stderr } = await execFileAsync("wrangler", args, {
     cwd: workerDir,
     timeout: 120_000,
   });
   // Parse the worker URL from wrangler output
-  const urlMatch = (stdout + stderr).match(/https:\/\/[\w.-]+\.workers\.dev/);
-  const workerUrl = urlMatch ? urlMatch[0] : null;
+  const output = stdout + stderr;
+  const urlMatch = output.match(/https:\/\/[\w.-]+\.workers\.dev/);
+  const workerUrl = customDomain
+    ? `https://${customDomain}`
+    : urlMatch ? urlMatch[0] : null;
   return { stdout, stderr, workerUrl };
 }
 

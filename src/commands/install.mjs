@@ -74,7 +74,7 @@ export async function run(flags) {
 
     if (resumeFrom === "deploy") {
       console.log(`\nDeploying worker "${workerName}"...`);
-      const result = await deploy(workerName);
+      const result = await deploy(workerName, { customDomain });
       workerUrl = result.workerUrl;
       if (!workerUrl) {
         workerUrl = `https://${workerName}.workers.dev`;

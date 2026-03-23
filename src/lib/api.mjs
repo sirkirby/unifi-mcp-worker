@@ -12,7 +12,7 @@ export function buildLocationTokenRequest(workerUrl, adminToken, locationName) {
 
 export function parseLocationTokenResponse(data) {
   return {
-    relayToken: data.relay_token,
+    relayToken: data.token || data.relay_token,
     locationId: data.location_id,
   };
 }

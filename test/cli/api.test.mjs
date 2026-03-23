@@ -16,7 +16,16 @@ describe("api", () => {
     assert.equal(req.url, "https://relay.workers.dev/api/locations/token");
   });
 
-  it("parses location token response", () => {
+  it("parses location token response with token field (worker format)", () => {
+    const result = parseLocationTokenResponse({
+      token: "tok-abc-123",
+      location_id: "loc_xyz",
+    });
+    assert.equal(result.relayToken, "tok-abc-123");
+    assert.equal(result.locationId, "loc_xyz");
+  });
+
+  it("parses location token response with relay_token field (spec format)", () => {
     const result = parseLocationTokenResponse({
       relay_token: "tok-abc-123",
       location_id: "loc_xyz",
