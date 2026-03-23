@@ -23,6 +23,7 @@ const { values, positionals } = parseArgs({
     "worker-url": { type: "string" },
     "admin-token": { type: "string" },
     token: { type: "string" },
+    force: { type: "boolean", short: "f" },
   },
 });
 
@@ -60,6 +61,7 @@ Options:
   --worker-url <url>     Worker URL (for add-location, rotate-tokens)
   --admin-token <token>  Admin token override
   --token <type>         Token to rotate: agent, admin, relay, all
+  --force, -f            Overwrite existing config on install
 `);
   process.exit(0);
 }

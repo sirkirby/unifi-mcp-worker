@@ -41,8 +41,16 @@ export async function run(flags) {
 
   try {
     console.log(`\nDeleting worker "${config.worker_name}"...`);
-    await deleteWorker(config.worker_name);
-    console.log("Worker deleted.");
+    try {
+      await deleteWorker(config.worker_name);
+      console.log("Worker deleted.");
+    } catch (err) {
+      if (err.message.includes("does not exist") || err.message.includes("10090")) {
+        console.log(chalk.dim("  Worker already removed from Cloudflare. Cleaning up local config."));
+      } else {
+        throw err;
+      }
+    }
 
     if (config.auto_update_repo) {
       const ghOk = await isGhAvailable();

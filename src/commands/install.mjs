@@ -1,6 +1,6 @@
 // src/commands/install.mjs
 import prompts from "prompts";
-import { loadConfig, saveConfig } from "../lib/config.mjs";
+import { loadConfig, saveConfig, deleteConfig } from "../lib/config.mjs";
 import { generateToken } from "../lib/tokens.mjs";
 import { ensureWrangler, checkWranglerAuth } from "../lib/prerequisites.mjs";
 import { deploy, putSecret, login } from "../lib/wrangler.mjs";
@@ -10,9 +10,14 @@ import { showInstallSuccess, showError } from "../lib/display.mjs";
 export async function run(flags) {
   const existing = loadConfig();
   if (existing && !existing.setup_incomplete) {
-    showError("A deployment already exists. Run 'unifi-mcp-worker status' to see it.");
-    showError("To start fresh, run 'unifi-mcp-worker destroy' first.");
-    process.exit(1);
+    if (flags.force) {
+      console.log("Overwriting existing config (--force).");
+      deleteConfig();
+    } else {
+      showError("A deployment already exists. Run 'unifi-mcp-worker status' to see it.");
+      showError("To start fresh, run 'unifi-mcp-worker destroy' first, or use 'unifi-mcp-worker install --force'.");
+      process.exit(1);
+    }
   }
 
   const wranglerOk = await ensureWrangler();
