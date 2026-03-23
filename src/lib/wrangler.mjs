@@ -11,7 +11,7 @@ function getWorkerDir() {
   return join(cliDir, "..", "..", "worker");
 }
 
-export async function deploy(workerName, { customDomain } = {}) {
+export async function deploy(workerName, { customDomain, overrideDns = false } = {}) {
   const workerDir = getWorkerDir();
   // Install worker dependencies (including devDependencies — wrangler and
   // @cloudflare/workers-types are devDeps needed for the build step)
@@ -23,6 +23,9 @@ export async function deploy(workerName, { customDomain } = {}) {
   const args = ["deploy", "--name", workerName];
   if (customDomain) {
     args.push("--domain", customDomain);
+    if (overrideDns) {
+      args.push("--experimental-override-existing-dns-record");
+    }
   }
   const { stdout, stderr } = await execFileAsync("wrangler", args, {
     cwd: workerDir,

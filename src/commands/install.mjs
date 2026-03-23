@@ -36,7 +36,9 @@ export async function run(flags) {
 
   if (resuming) {
     workerName = existing.worker_name;
-    locationName = flags["location-name"] || "Home Lab";
+    customDomain = existing.custom_domain || null;
+    locationName = existing._location_name || flags["location-name"] || "Home Lab";
+    console.log(`Resuming install for "${workerName}" from ${resumeFrom} step...`);
   } else if (flags["non-interactive"]) {
     workerName = flags["worker-name"] || "unifi-mcp-relay";
     locationName = flags["location-name"] || "Home Lab";
@@ -79,7 +81,32 @@ export async function run(flags) {
 
     if (resumeFrom === "deploy") {
       console.log(`\nDeploying worker "${workerName}"...`);
-      const result = await deploy(workerName, { customDomain });
+      let result;
+      try {
+        result = await deploy(workerName, { customDomain });
+      } catch (deployErr) {
+        // DNS conflict — offer to override existing records
+        if (customDomain && deployErr.message.includes("externally managed DNS")) {
+          console.log(`\n  Domain "${customDomain}" has existing DNS records.`);
+          let shouldOverride = flags.yes || flags["non-interactive"];
+          if (!shouldOverride) {
+            const answer = await prompts({
+              type: "confirm",
+              name: "override",
+              message: "Override existing DNS records for this domain?",
+              initial: true,
+            });
+            shouldOverride = answer.override;
+          }
+          if (shouldOverride) {
+            result = await deploy(workerName, { customDomain, overrideDns: true });
+          } else {
+            throw new Error("Custom domain requires DNS override. Deploy cancelled.");
+          }
+        } else {
+          throw deployErr;
+        }
+      }
       workerUrl = result.workerUrl;
       if (!workerUrl) {
         workerUrl = `https://${workerName}.workers.dev`;
@@ -89,8 +116,10 @@ export async function run(flags) {
       saveConfig({
         setup_incomplete: true,
         _resume_step: "secrets",
+        _location_name: locationName,
         worker_name: workerName,
         worker_url: workerUrl,
+        custom_domain: customDomain || null,
         agent_token: agentToken,
         admin_token: adminToken,
         locations: [],
