@@ -11,8 +11,10 @@ function getWorkerDir() {
   return join(cliDir, "..", "..", "worker");
 }
 
-export async function deploy(workerName, { customDomain, overrideDns = false } = {}) {
+export async function deploy(workerName, { customDomain } = {}) {
   const workerDir = getWorkerDir();
+  const wranglerToml = join(workerDir, "wrangler.toml");
+
   // Install worker dependencies (including devDependencies — wrangler and
   // @cloudflare/workers-types are devDeps needed for the build step)
   await execFileAsync("npm", ["install"], {
@@ -20,24 +22,35 @@ export async function deploy(workerName, { customDomain, overrideDns = false } =
     timeout: 120_000,
   });
 
-  const args = ["deploy", "--name", workerName];
+  // If custom domain requested, append [[routes]] block to wrangler.toml
+  // This uses Cloudflare Custom Domains which handle DNS automatically
+  const { readFileSync, writeFileSync } = await import("node:fs");
+  const originalToml = readFileSync(wranglerToml, "utf8");
+
   if (customDomain) {
-    args.push("--domain", customDomain);
-    if (overrideDns) {
-      args.push("--experimental-override-existing-dns-record");
-    }
+    // Remove any existing [[routes]] blocks, then append the new one
+    const cleanedToml = originalToml.replace(/\n*\[\[routes\]\]\n[^\[]*/g, "");
+    const routeBlock = `\n[[routes]]\npattern = "${customDomain}"\ncustom_domain = true\n`;
+    writeFileSync(wranglerToml, cleanedToml.trimEnd() + "\n" + routeBlock);
   }
-  const { stdout, stderr } = await execFileAsync("wrangler", args, {
-    cwd: workerDir,
-    timeout: 120_000,
-  });
-  // Parse the worker URL from wrangler output
-  const output = stdout + stderr;
-  const urlMatch = output.match(/https:\/\/[\w.-]+\.workers\.dev/);
-  const workerUrl = customDomain
-    ? `https://${customDomain}`
-    : urlMatch ? urlMatch[0] : null;
-  return { stdout, stderr, workerUrl };
+
+  try {
+    const args = ["deploy", "--name", workerName];
+    const { stdout, stderr } = await execFileAsync("wrangler", args, {
+      cwd: workerDir,
+      timeout: 120_000,
+    });
+    // Parse the worker URL from wrangler output
+    const output = stdout + stderr;
+    const urlMatch = output.match(/https:\/\/[\w.-]+\.workers\.dev/);
+    const workerUrl = customDomain
+      ? `https://${customDomain}`
+      : urlMatch ? urlMatch[0] : null;
+    return { stdout, stderr, workerUrl };
+  } finally {
+    // Restore original wrangler.toml so the bundled source stays clean
+    writeFileSync(wranglerToml, originalToml);
+  }
 }
 
 export async function putSecret(workerName, secretName, secretValue) {

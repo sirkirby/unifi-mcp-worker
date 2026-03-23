@@ -81,32 +81,7 @@ export async function run(flags) {
 
     if (resumeFrom === "deploy") {
       console.log(`\nDeploying worker "${workerName}"...`);
-      let result;
-      try {
-        result = await deploy(workerName, { customDomain });
-      } catch (deployErr) {
-        // DNS conflict — offer to override existing records
-        if (customDomain && deployErr.message.includes("externally managed DNS")) {
-          console.log(`\n  Domain "${customDomain}" has existing DNS records.`);
-          let shouldOverride = flags.yes || flags["non-interactive"];
-          if (!shouldOverride) {
-            const answer = await prompts({
-              type: "confirm",
-              name: "override",
-              message: "Override existing DNS records for this domain?",
-              initial: true,
-            });
-            shouldOverride = answer.override;
-          }
-          if (shouldOverride) {
-            result = await deploy(workerName, { customDomain, overrideDns: true });
-          } else {
-            throw new Error("Custom domain requires DNS override. Deploy cancelled.");
-          }
-        } else {
-          throw deployErr;
-        }
-      }
+      const result = await deploy(workerName, { customDomain });
       workerUrl = result.workerUrl;
       if (!workerUrl) {
         workerUrl = `https://${workerName}.workers.dev`;
