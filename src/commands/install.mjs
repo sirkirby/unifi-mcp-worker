@@ -52,8 +52,8 @@ export async function run(flags) {
       },
       {
         type: "text",
-        name: "customDomain",
-        message: "Custom domain (leave blank for default *.workers.dev)",
+        name: "baseDomain",
+        message: "Base domain (leave blank for default *.workers.dev)",
         initial: "",
       },
       {
@@ -64,7 +64,7 @@ export async function run(flags) {
       },
     ]);
     workerName = answers.workerName;
-    customDomain = answers.customDomain || null;
+    customDomain = answers.baseDomain ? `${answers.workerName}.${answers.baseDomain}` : null;
     locationName = answers.locationName;
   }
 
