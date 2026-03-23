@@ -9,7 +9,12 @@
   "files": [
     "bin/",
     "src/",
-    "worker/",
+    "worker/src/",
+    "worker/package.json",
+    "worker/package-lock.json",
+    "worker/wrangler.toml",
+    "worker/tsconfig.json",
+    "worker/vitest.config.ts",
     "install.sh"
   ],
   "scripts": {
