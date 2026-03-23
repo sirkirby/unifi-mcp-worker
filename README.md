@@ -2,8 +2,6 @@
 
 A Cloudflare Worker that enables cloud agents to access locally-hosted UniFi MCP servers via a secure relay gateway.
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/sirkirby/unifi-mcp-worker)
-
 ---
 
 ## How It Works
@@ -31,46 +29,48 @@ The Durable Object persists location registrations in SQLite and maintains live 
 
 ## Quick Start
 
-### 1. Deploy
-
-Click the **Deploy to Cloudflare Workers** button above, or deploy manually:
+### Install
 
 ```bash
-git clone https://github.com/sirkirby/unifi-mcp-worker
-cd unifi-mcp-worker
-npm install
-npx wrangler deploy
+curl -fsSL https://raw.githubusercontent.com/sirkirby/unifi-mcp-worker/main/install.sh | bash
 ```
 
-### 2. Set Secrets
+Or install the CLI directly:
 
 ```bash
-wrangler secret put AGENT_TOKEN    # authenticates cloud agents calling /mcp
-wrangler secret put ADMIN_TOKEN    # authenticates admin API calls
+npm install -g unifi-mcp-worker
+unifi-mcp-worker install
 ```
 
-Choose strong random strings (e.g., `openssl rand -hex 32`).
+The CLI will:
+1. Check prerequisites (Node.js, Wrangler)
+2. Deploy the worker to your Cloudflare account
+3. Generate and set authentication tokens
+4. Display your tokens and next steps
 
-### 3. Configure the Relay Client
-
-Generate a relay token for your location (see [Token Management](#token-management)), then follow the setup instructions in the [unifi-mcp](https://github.com/sirkirby/unifi-mcp) repository to connect `unifi-mcp-relay` to this worker.
-
----
-
-## Manual Setup
+### Upgrade
 
 ```bash
-# Clone and install
-git clone https://github.com/sirkirby/unifi-mcp-worker
-cd unifi-mcp-worker
-npm install
+unifi-mcp-worker upgrade
+```
 
-# Set required secrets
-wrangler secret put AGENT_TOKEN
-wrangler secret put ADMIN_TOKEN
+### Add a Location
 
-# Deploy
-npx wrangler deploy
+```bash
+unifi-mcp-worker add-location
+```
+
+### Manage Tokens
+
+```bash
+unifi-mcp-worker rotate-tokens
+unifi-mcp-worker status
+```
+
+### Remove
+
+```bash
+unifi-mcp-worker destroy
 ```
 
 ---
@@ -84,7 +84,7 @@ npx wrangler deploy
 | `AGENT_TOKEN` | Bearer token required by cloud agents calling the `/mcp` endpoint |
 | `ADMIN_TOKEN` | Bearer token required for admin API calls (`/api/*`) |
 
-Secrets are set via `wrangler secret put` and are never exposed in source code or `wrangler.toml`.
+Secrets are set automatically by the CLI and can be rotated with `unifi-mcp-worker rotate-tokens`.
 
 ### Environment Variables
 
@@ -131,7 +131,7 @@ The relay always exposes three meta-tools regardless of registration mode:
 
 ## Token Management
 
-Each relay client authenticates with the relay using a per-location relay token. Generate one via the admin API:
+The CLI manages tokens automatically during `install` and `rotate-tokens`. You can also manage tokens manually via the admin API:
 
 ```bash
 curl -X POST https://your-worker.workers.dev/api/locations/token \
@@ -153,6 +153,12 @@ Response:
 Store the `token` value securely — it is only returned once. Provide it to `unifi-mcp-relay` as `UNIFI_MCP_RELAY_TOKEN` (see [unifi-mcp](https://github.com/sirkirby/unifi-mcp) for relay client configuration).
 
 ### List Registered Locations
+
+```bash
+unifi-mcp-worker status
+```
+
+Or via the admin API:
 
 ```bash
 curl https://your-worker.workers.dev/api/locations \
@@ -195,7 +201,7 @@ Read-only operations (tools with `readOnlyHint: true`) are automatically fanned 
 - **SHA-256 hashed storage** — relay tokens are stored as hashes in SQLite; the plaintext is never persisted
 - **Per-location isolation** — each relay client is identified by its own relay token and location ID; locations cannot access each other's data
 - **HTTPS/WSS transport** — all traffic is encrypted in transit; Cloudflare terminates TLS at the edge
-- **No credentials in config** — tokens and secrets are managed via `wrangler secret put`, never committed to source
+- **No credentials in config** — tokens and secrets are managed via the CLI or `wrangler secret put`, never committed to source
 
 ---
 

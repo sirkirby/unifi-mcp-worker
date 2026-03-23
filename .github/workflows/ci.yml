@@ -17,10 +17,17 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - name: Install CLI dependencies
+        run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Install worker dependencies
+        run: cd worker && npm ci
 
-      - name: Test
+      - name: Typecheck worker
+        run: cd worker && npm run typecheck
+
+      - name: CLI tests
         run: npm test
+
+      - name: Worker tests
+        run: npm run test:worker
