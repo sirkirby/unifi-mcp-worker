@@ -22,7 +22,7 @@ export async function deploy(workerName, { customDomain } = {}) {
 
   const args = ["deploy", "--name", workerName];
   if (customDomain) {
-    args.push("--route", `${customDomain}/*`);
+    args.push("--domain", customDomain);
   }
   const { stdout, stderr } = await execFileAsync("wrangler", args, {
     cwd: workerDir,
