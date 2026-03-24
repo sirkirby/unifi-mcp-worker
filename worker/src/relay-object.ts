@@ -865,6 +865,13 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
       access: "unifi_access_list_events",
     };
 
+    // Convert time range to within_hours for Network events (which use a lookback window)
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+    const withinHours = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)));
+    // Hours from now to the start of the window (for Network's "within" param)
+    const hoursAgo = Math.max(1, Math.ceil((Date.now() - startDate.getTime()) / (1000 * 60 * 60)));
+
     const targetProducts = products || Object.keys(eventToolMap);
     const allEvents: Array<Record<string, unknown>> = [];
 
@@ -881,8 +888,14 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
       const targetLocations = locationId ? locations.filter((l) => l === locationId) : locations;
       if (targetLocations.length === 0) continue;
 
+      // Build product-specific arguments
+      // Network uses within_hours lookback; Protect/Access may use start_time/end_time
+      const toolArgs: Record<string, unknown> = product === "network"
+        ? { within_hours: hoursAgo, limit: 3000 }
+        : { start_time: startTime, end_time: endTime };
+
       try {
-        const result = await this.routeToolCall(toolName, { start_time: startTime, end_time: endTime });
+        const result = await this.routeToolCall(toolName, toolArgs);
 
         // Extract events from the result (handles both single and fan-out responses)
         const events = this.extractEvents(result, product);
