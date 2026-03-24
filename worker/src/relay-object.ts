@@ -114,7 +114,47 @@ const META_TOOL_BATCH: ToolInfo = {
   },
 };
 
-const META_TOOLS: ToolInfo[] = [META_TOOL_INDEX, META_TOOL_EXECUTE, META_TOOL_BATCH];
+const META_TOOL_LOCATION_TIMELINE: ToolInfo = {
+  name: "unifi_location_timeline",
+  description:
+    "Query events across all connected UniFi products (Network, Protect, Access) " +
+    "and return a unified, time-sorted timeline. Correlates network events, camera " +
+    "motion, and door access in a single view.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      start_time: { type: "string", description: "Start of time window (ISO 8601)" },
+      end_time: { type: "string", description: "End of time window (ISO 8601)" },
+      location_id: {
+        type: "string",
+        description: "Filter to a specific location (omit to query all connected locations)",
+      },
+      products: {
+        type: "array",
+        items: { type: "string" },
+        description: "Filter to specific products: ['network', 'protect', 'access']",
+      },
+      area_hint: {
+        type: "string",
+        description: "Filter by area name (e.g., 'front door' matches AP, camera, and door names)",
+      },
+      event_types: {
+        type: "array",
+        items: { type: "string" },
+        description: "Filter by event type (e.g., 'motion', 'client_connect', 'badge_scan')",
+      },
+    },
+    required: ["start_time", "end_time"],
+  },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+};
+
+const META_TOOLS: ToolInfo[] = [META_TOOL_INDEX, META_TOOL_EXECUTE, META_TOOL_BATCH, META_TOOL_LOCATION_TIMELINE];
 
 // ---------------------------------------------------------------------------
 // Relay Durable Object
