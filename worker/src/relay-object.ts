@@ -724,6 +724,9 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
     if (toolName === "unifi_batch") {
       return this.handleBatch(args);
     }
+    if (toolName === "unifi_location_timeline") {
+      return this.handleLocationTimeline(args);
+    }
 
     // Direct tool call (eager mode)
     return this.routeToolCall(toolName, args);
@@ -832,6 +835,165 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
     });
 
     return { success: true, data: { results, total: results.length } };
+  }
+
+  private async handleLocationTimeline(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const startTime = args.start_time as string | undefined;
+    const endTime = args.end_time as string | undefined;
+
+    if (!startTime || !endTime) {
+      return { success: false, error: "start_time and end_time are required" };
+    }
+
+    // Validate ISO 8601
+    if (isNaN(Date.parse(startTime)) || isNaN(Date.parse(endTime))) {
+      return { success: false, error: "start_time and end_time must be valid ISO 8601 timestamps" };
+    }
+    if (new Date(endTime) <= new Date(startTime)) {
+      return { success: false, error: "end_time must be after start_time" };
+    }
+
+    const locationId = args.location_id as string | undefined;
+    const products = args.products as string[] | undefined;
+    const areaHint = args.area_hint as string | undefined;
+    const eventTypes = args.event_types as string[] | undefined;
+
+    // Event-listing tool names per product
+    const eventToolMap: Record<string, string> = {
+      network: "unifi_list_events",
+      protect: "unifi_protect_list_events",
+      access: "unifi_access_list_events",
+    };
+
+    const targetProducts = products || Object.keys(eventToolMap);
+    const allEvents: Array<Record<string, unknown>> = [];
+
+    // Fan out event queries to each product's event tool
+    for (const product of targetProducts) {
+      const toolName = eventToolMap[product];
+      if (!toolName) continue;
+
+      // Check if any location has this tool
+      const locations = this.toolToLocations.get(toolName);
+      if (!locations || locations.length === 0) continue;
+
+      // Filter to specific location if requested
+      const targetLocations = locationId ? locations.filter((l) => l === locationId) : locations;
+      if (targetLocations.length === 0) continue;
+
+      try {
+        const result = await this.routeToolCall(toolName, { start_time: startTime, end_time: endTime });
+
+        // Extract events from the result (handles both single and fan-out responses)
+        const events = this.extractEvents(result, product);
+        allEvents.push(...events);
+      } catch (err) {
+        // Log but continue — partial results are better than failure
+      }
+    }
+
+    // Sort by timestamp
+    allEvents.sort((a, b) => {
+      const tsA = String(a.timestamp || a.datetime || a.time || "");
+      const tsB = String(b.timestamp || b.datetime || b.time || "");
+      return tsA.localeCompare(tsB);
+    });
+
+    // Apply area_hint filter (case-insensitive substring match on area names)
+    let filtered = allEvents;
+    if (areaHint) {
+      const hint = areaHint.toLowerCase();
+      filtered = allEvents.filter((e) => {
+        const areaFields = [e.ap_name, e.camera_name, e.door_name, e.device_name, e.name].filter(Boolean);
+        return areaFields.some((f) => String(f).toLowerCase().includes(hint));
+      });
+    }
+
+    // Apply event_types filter
+    if (eventTypes && eventTypes.length > 0) {
+      const types = new Set(eventTypes);
+      filtered = filtered.filter((e) => types.has(String(e.type || e.event_type || "")));
+    }
+
+    // Build summary
+    const byProduct: Record<string, number> = {};
+    const byType: Record<string, number> = {};
+    const byLocation: Record<string, number> = {};
+    for (const e of filtered) {
+      const p = String(e._product || "unknown");
+      byProduct[p] = (byProduct[p] || 0) + 1;
+      const t = String(e.type || e.event_type || "unknown");
+      byType[t] = (byType[t] || 0) + 1;
+      if (e._location_id) {
+        const l = String(e._location_id);
+        byLocation[l] = (byLocation[l] || 0) + 1;
+      }
+    }
+
+    return {
+      success: true,
+      data: {
+        timeline: filtered,
+        summary: {
+          total_events: filtered.length,
+          by_product: byProduct,
+          by_type: byType,
+          by_location: byLocation,
+          time_range: { start: startTime, end: endTime },
+        },
+      },
+    };
+  }
+
+  /** Extract events from a tool call result, tagging each with product and location metadata. */
+  private extractEvents(
+    result: Record<string, unknown> | AggregatedResponse,
+    product: string,
+  ): Array<Record<string, unknown>> {
+    // Fan-out response (multi-location)
+    if ("results" in result && Array.isArray((result as AggregatedResponse).results)) {
+      const agg = result as AggregatedResponse;
+      const events: Array<Record<string, unknown>> = [];
+      for (const locResult of agg.results) {
+        if (locResult.error) continue;
+        const locEvents = this.extractEventsFromData(locResult.data);
+        for (const e of locEvents) {
+          e._product = product;
+          e._location_id = locResult.location_id;
+          e._location_name = locResult.location_name;
+        }
+        events.push(...locEvents);
+      }
+      return events;
+    }
+
+    // Single-location response
+    const data = (result as Record<string, unknown>).data ?? result;
+    const events = this.extractEventsFromData(data);
+    for (const e of events) {
+      e._product = product;
+    }
+    return events;
+  }
+
+  /** Pull the events array out of a tool result's data payload. */
+  private extractEventsFromData(data: unknown): Array<Record<string, unknown>> {
+    if (!data || typeof data !== "object") return [];
+
+    // Handle {success: true, data: {events: [...]}} pattern
+    const d = data as Record<string, unknown>;
+    if (d.success && d.data && typeof d.data === "object") {
+      const inner = d.data as Record<string, unknown>;
+      if (Array.isArray(inner.events)) return inner.events as Array<Record<string, unknown>>;
+    }
+
+    // Handle {events: [...]} directly
+    if (Array.isArray(d.events)) return d.events as Array<Record<string, unknown>>;
+
+    // Handle raw array
+    if (Array.isArray(data)) return data as Array<Record<string, unknown>>;
+
+    return [];
   }
 
   // -------------------------------------------------------------------------
