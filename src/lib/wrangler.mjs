@@ -11,7 +11,31 @@ function getWorkerDir() {
   return join(cliDir, "..", "..", "worker");
 }
 
-export async function deploy(workerName, { customDomain } = {}) {
+/**
+ * Pure function: takes base wrangler.toml content and options,
+ * returns the modified TOML string for deploy.
+ */
+export function buildWranglerToml(originalToml, { customDomain, observability } = {}) {
+  let toml = originalToml;
+
+  if (customDomain) {
+    // Remove any existing [[routes]] blocks, then append the new one
+    toml = toml.replace(/\n*\[\[routes\]\]\n[^\[]*/g, "");
+    const routeBlock = `\n[[routes]]\npattern = "${customDomain}"\ncustom_domain = true\n`;
+    toml = toml.trimEnd() + "\n" + routeBlock;
+  }
+
+  if (observability) {
+    // Strip the [observability] block this function emits (canonical format only)
+    toml = toml.replace(/\n*\[observability\]\n(\[observability\.\w+\]\n)?[^\[]*/g, "");
+    const obsBlock = `\n[observability]\n[observability.logs]\nenabled = true\ninvocation_logs = true\n`;
+    toml = toml.trimEnd() + "\n" + obsBlock;
+  }
+
+  return toml;
+}
+
+export async function deploy(workerName, { customDomain, observability } = {}) {
   const workerDir = getWorkerDir();
   const wranglerToml = join(workerDir, "wrangler.toml");
 
@@ -22,16 +46,12 @@ export async function deploy(workerName, { customDomain } = {}) {
     timeout: 120_000,
   });
 
-  // If custom domain requested, append [[routes]] block to wrangler.toml
-  // This uses Cloudflare Custom Domains which handle DNS automatically
   const { readFileSync, writeFileSync } = await import("node:fs");
   const originalToml = readFileSync(wranglerToml, "utf8");
+  const modifiedToml = buildWranglerToml(originalToml, { customDomain, observability });
 
-  if (customDomain) {
-    // Remove any existing [[routes]] blocks, then append the new one
-    const cleanedToml = originalToml.replace(/\n*\[\[routes\]\]\n[^\[]*/g, "");
-    const routeBlock = `\n[[routes]]\npattern = "${customDomain}"\ncustom_domain = true\n`;
-    writeFileSync(wranglerToml, cleanedToml.trimEnd() + "\n" + routeBlock);
+  if (modifiedToml !== originalToml) {
+    writeFileSync(wranglerToml, modifiedToml);
   }
 
   try {

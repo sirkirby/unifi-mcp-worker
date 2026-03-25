@@ -92,7 +92,10 @@ export async function run(flags) {
 
   try {
     console.log(`\nUpgrading worker "${workerName}"...`);
-    await deploy(workerName, { customDomain: config?.custom_domain });
+    await deploy(workerName, {
+      customDomain: config?.custom_domain,
+      observability: config?.observability || false,
+    });
 
     if (config) {
       config.last_upgraded = new Date().toISOString();

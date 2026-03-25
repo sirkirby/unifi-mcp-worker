@@ -61,7 +61,7 @@ const META_TOOL_EXECUTE: ToolInfo = {
   inputSchema: {
     type: "object",
     properties: {
-      tool_name: { type: "string", description: "Name of the tool to execute" },
+      tool: { type: "string", description: "Name of the tool to execute" },
       arguments: {
         type: "object",
         description: "Arguments to pass to the tool",
@@ -72,7 +72,7 @@ const META_TOOL_EXECUTE: ToolInfo = {
         description: "Target location ID (required for multi-location write operations)",
       },
     },
-    required: ["tool_name"],
+    required: ["tool"],
   },
   annotations: {
     readOnlyHint: false,
@@ -86,7 +86,7 @@ const META_TOOL_BATCH: ToolInfo = {
   name: "unifi_batch",
   description:
     "Execute multiple UniFi tools in a single request. Each call is an object with " +
-    "'tool_name' and 'arguments'. Results are returned in order.",
+    "'tool' and 'arguments'. Results are returned in order.",
   inputSchema: {
     type: "object",
     properties: {
@@ -95,11 +95,11 @@ const META_TOOL_BATCH: ToolInfo = {
         items: {
           type: "object",
           properties: {
-            tool_name: { type: "string" },
+            tool: { type: "string" },
             arguments: { type: "object", additionalProperties: true },
             __location: { type: "string" },
           },
-          required: ["tool_name"],
+          required: ["tool"],
         },
         description: "Array of tool calls to execute",
       },
@@ -796,9 +796,9 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
   }
 
   private async handleExecute(args: Record<string, unknown>): Promise<Record<string, unknown> | AggregatedResponse> {
-    const toolName = args.tool_name as string;
+    const toolName = args.tool as string;
     if (!toolName) {
-      return { success: false, error: "Missing required argument: tool_name" };
+      return { success: false, error: "Missing required argument: tool" };
     }
 
     const toolArgs = (args.arguments as Record<string, unknown>) || {};
@@ -811,7 +811,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
   }
 
   private async handleBatch(args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const calls = args.calls as Array<{ tool_name: string; arguments?: Record<string, unknown>; __location?: string }>;
+    const calls = args.calls as Array<{ tool: string; arguments?: Record<string, unknown>; __location?: string }>;
     if (!calls || !Array.isArray(calls)) {
       return { success: false, error: "Missing required argument: calls (array)" };
     }
@@ -822,16 +822,16 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
         if (call.__location) {
           callArgs.__location = call.__location;
         }
-        return this.routeToolCall(call.tool_name, callArgs);
+        return this.routeToolCall(call.tool, callArgs);
       }),
     );
 
-    const results: Array<{ tool_name: string; result?: unknown; error?: string }> = settled.map((outcome, i) => {
+    const results: Array<{ tool: string; result?: unknown; error?: string }> = settled.map((outcome, i) => {
       if (outcome.status === "fulfilled") {
-        return { tool_name: calls[i].tool_name, result: outcome.value };
+        return { tool: calls[i].tool, result: outcome.value };
       }
       const msg = outcome.reason instanceof Error ? outcome.reason.message : "Unknown error";
-      return { tool_name: calls[i].tool_name, error: msg };
+      return { tool: calls[i].tool, error: msg };
     });
 
     return { success: true, data: { results, total: results.length } };

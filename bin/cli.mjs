@@ -9,6 +9,7 @@ const COMMANDS = {
   "rotate-tokens": () => import("../src/commands/rotate-tokens.mjs"),
   status: () => import("../src/commands/status.mjs"),
   destroy: () => import("../src/commands/destroy.mjs"),
+  observability: () => import("../src/commands/observability.mjs"),
 };
 
 const { values, positionals } = parseArgs({
@@ -24,6 +25,9 @@ const { values, positionals } = parseArgs({
     "admin-token": { type: "string" },
     token: { type: "string" },
     force: { type: "boolean", short: "f" },
+    enable: { type: "boolean" },
+    disable: { type: "boolean" },
+    observability: { type: "boolean" },
   },
 });
 
@@ -50,6 +54,7 @@ Commands:
   rotate-tokens   Rotate agent, admin, or relay tokens
   status          Show deployment info and token summary
   destroy         Remove the worker and clean up
+  observability   Show or toggle Workers Logs observability
 
 Options:
   --version, -v          Show CLI version
@@ -62,6 +67,9 @@ Options:
   --admin-token <token>  Admin token override
   --token <type>         Token to rotate: agent, admin, relay, all
   --force, -f            Overwrite existing config on install
+  --enable               Enable observability (for observability command)
+  --disable              Disable observability (for observability command)
+  --observability        Enable observability during install
 `);
   process.exit(0);
 }

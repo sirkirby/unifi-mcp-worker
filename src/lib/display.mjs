@@ -58,6 +58,12 @@ export function showStatus(config) {
     console.log(`  Auto-update: ${chalk.dim("disabled")}`);
   }
 
+  if (config.observability) {
+    console.log(`  Observability: ${chalk.green("enabled")}`);
+  } else {
+    console.log(`  Observability: ${chalk.dim("disabled")}`);
+  }
+
   if (config.last_upgraded) {
     console.log(`  Last upgraded: ${config.last_upgraded}`);
   }

@@ -32,16 +32,18 @@ export async function run(flags) {
   const resuming = existing?.setup_incomplete;
   const resumeFrom = resuming ? existing._resume_step || "deploy" : "deploy";
 
-  let workerName, locationName, customDomain;
+  let workerName, locationName, customDomain, observability;
 
   if (resuming) {
     workerName = existing.worker_name;
     customDomain = existing.custom_domain || null;
     locationName = existing._location_name || flags["location-name"] || "Home Lab";
+    observability = existing.observability || false;
     console.log(`Resuming install for "${workerName}" from ${resumeFrom} step...`);
   } else if (flags["non-interactive"]) {
     workerName = flags["worker-name"] || "unifi-mcp-relay";
     locationName = flags["location-name"] || "Home Lab";
+    observability = flags.observability || false;
   } else {
     const answers = await prompts([
       {
@@ -62,10 +64,17 @@ export async function run(flags) {
         message: "Location name for your first relay",
         initial: "Home Lab",
       },
+      {
+        type: "confirm",
+        name: "observability",
+        message: "Enable observability? (logs stored 7 days in Cloudflare dashboard)",
+        initial: false,
+      },
     ]);
     workerName = answers.workerName;
     customDomain = answers.baseDomain ? `${answers.workerName}.${answers.baseDomain}` : null;
     locationName = answers.locationName;
+    observability = answers.observability;
   }
 
   if (!workerName || !locationName) {
@@ -81,7 +90,7 @@ export async function run(flags) {
 
     if (resumeFrom === "deploy") {
       console.log(`\nDeploying worker "${workerName}"...`);
-      const result = await deploy(workerName, { customDomain });
+      const result = await deploy(workerName, { customDomain, observability });
       workerUrl = result.workerUrl;
       if (!workerUrl) {
         workerUrl = `https://${workerName}.workers.dev`;
@@ -95,6 +104,7 @@ export async function run(flags) {
         worker_name: workerName,
         worker_url: workerUrl,
         custom_domain: customDomain || null,
+        observability,
         agent_token: agentToken,
         admin_token: adminToken,
         locations: [],
@@ -127,6 +137,7 @@ export async function run(flags) {
         worker_name: workerName,
         worker_url: workerUrl || existing?.worker_url,
         custom_domain: customDomain || null,
+        observability,
         agent_token: agentToken || existing?.agent_token,
         admin_token: adminToken || existing?.admin_token,
         locations: [
