@@ -1,0 +1,45 @@
+version: 3
+config_version: 4
+embedding:
+  provider: ollama
+  model: bge-m3:latest
+daemon:
+  port: 22536
+  log_level: info
+  log_retention_days: 30
+capture:
+  transcript_paths: []
+  plan_dirs: []
+  artifact_extensions:
+    - .md
+  buffer_max_events: 500
+agent:
+  summary_batch_interval: 5
+  scheduled_tasks_enabled: true
+  event_tasks_enabled: true
+  provider:
+    type: anthropic
+  tasks:
+    full-intelligence:
+      schedule:
+        enabled: true
+        intervalSeconds: 300
+context:
+  digest_tier: 1500
+  prompt_search: true
+  prompt_max_spores: 3
+backup: {}
+maintenance:
+  auto_optimize: true
+  auto_optimize_interval_hours: 24
+team:
+  enabled: false
+  interval_minutes: 15
+skills:
+  confidence_threshold: 0.7
+  usage_stale_days: 30
+notifications:
+  enabled: true
+  system_notifications: false
+  default_mode: banner
+  domains: {}
