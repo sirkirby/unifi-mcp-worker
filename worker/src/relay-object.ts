@@ -30,7 +30,9 @@ const MAX_LOCATION_NAME_LENGTH = 128;
 const META_TOOL_INDEX: ToolInfo = {
   name: "unifi_tool_index",
   description:
-    "List all available UniFi tools with descriptions and categories. " +
+    "Discover available UniFi tools. Returns names and descriptions by default. " +
+    "Use 'category' to filter by area (e.g. clients, firewall, devices), " +
+    "'search' for keyword matching, or 'include_schemas' for full parameter schemas. " +
     "Use this to discover tools before calling unifi_execute.",
   inputSchema: {
     type: "object",
@@ -42,6 +44,13 @@ const META_TOOL_INDEX: ToolInfo = {
       search: {
         type: "string",
         description: "Optional search term to filter tools by name or description",
+      },
+      include_schemas: {
+        type: "boolean",
+        description:
+          "Include full input schemas per tool. Defaults to false. " +
+          "Set true with a category or search filter to get parameter details for specific tools.",
+        default: false,
       },
     },
   },
@@ -743,6 +752,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
   private handleToolIndex(args: Record<string, unknown>): Record<string, unknown> {
     const category = args.category as string | undefined;
     const search = args.search as string | undefined;
+    const includeSchemas = Boolean(args.include_schemas);
 
     // Build tool list with location metadata
     const toolEntries: Array<{
@@ -750,6 +760,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
       description: string;
       locations: string[];
       annotations?: ToolAnnotations;
+      inputSchema?: Record<string, unknown>;
     }> = [];
 
     const seen = new Set<string>();
@@ -757,12 +768,16 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
       for (const tool of tools) {
         if (!seen.has(tool.name)) {
           seen.add(tool.name);
-          toolEntries.push({
+          const entry: (typeof toolEntries)[number] = {
             name: tool.name,
             description: tool.description,
             locations: this.toolToLocations.get(tool.name) || [locationId],
             annotations: tool.annotations,
-          });
+          };
+          if (includeSchemas && tool.inputSchema) {
+            entry.inputSchema = tool.inputSchema;
+          }
+          toolEntries.push(entry);
         }
       }
     }

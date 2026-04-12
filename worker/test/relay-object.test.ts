@@ -94,8 +94,39 @@ function createMockRelay(
       args: Record<string, unknown>,
     ): Promise<Record<string, unknown> | AggregatedResponse> {
       if (toolName === "unifi_tool_index") {
-        const tools = getAggregatedTools();
-        return { success: true, data: { tools, total: tools.length, multi_location: locationTools.size > 1 } };
+        const allTools = getAggregatedTools();
+        const includeSchemas = Boolean(args.include_schemas);
+        let filtered = allTools.map((t) => {
+          const entry: Record<string, unknown> = {
+            name: t.name,
+            description: t.description,
+            locations: toolToLocations.get(t.name) || [],
+            annotations: t.annotations,
+          };
+          if (includeSchemas && t.inputSchema) {
+            entry.inputSchema = t.inputSchema;
+          }
+          return entry;
+        });
+        const category = args.category as string | undefined;
+        const search = args.search as string | undefined;
+        if (category) {
+          const cat = category.toLowerCase();
+          filtered = filtered.filter(
+            (t) =>
+              (t.name as string).toLowerCase().includes(cat) ||
+              (t.description as string).toLowerCase().includes(cat),
+          );
+        }
+        if (search) {
+          const term = search.toLowerCase();
+          filtered = filtered.filter(
+            (t) =>
+              (t.name as string).toLowerCase().includes(term) ||
+              (t.description as string).toLowerCase().includes(term),
+          );
+        }
+        return { success: true, data: { tools: filtered, total: filtered.length, multi_location: locationTools.size > 1 } };
       }
       return { success: false, error: `Tool not found: ${toolName}` };
     },
@@ -113,16 +144,19 @@ function sampleTools(): ToolInfo[] {
     {
       name: "list_clients",
       description: "List all connected clients",
+      inputSchema: { type: "object", properties: { site: { type: "string" } } },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     {
       name: "list_devices",
       description: "List all network devices",
+      inputSchema: { type: "object", properties: { type: { type: "string" } } },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     {
       name: "restart_device",
       description: "Restart a network device",
+      inputSchema: { type: "object", properties: { mac: { type: "string" } } },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
   ];
@@ -334,6 +368,75 @@ describe("MCP handler with relay stub", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data.tools).toHaveLength(3);
     expect(parsed.data.multi_location).toBe(false);
+  });
+
+  it("unifi_tool_index omits schemas by default", async () => {
+    const relay = createMockRelay(new Map([["loc-1", sampleTools()]]));
+
+    const response = await handleMcpRequest(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "unifi_tool_index", arguments: {} },
+      },
+      relay,
+      "lazy",
+    );
+
+    const result = response.result as Record<string, unknown>;
+    const content = result.content as Array<Record<string, unknown>>;
+    const parsed = JSON.parse(content[0].text as string);
+    const tools = parsed.data.tools as Array<Record<string, unknown>>;
+    expect(tools).toHaveLength(3);
+    for (const tool of tools) {
+      expect(tool.inputSchema).toBeUndefined();
+    }
+  });
+
+  it("unifi_tool_index includes schemas when include_schemas=true", async () => {
+    const relay = createMockRelay(new Map([["loc-1", sampleTools()]]));
+
+    const response = await handleMcpRequest(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "unifi_tool_index", arguments: { include_schemas: true } },
+      },
+      relay,
+      "lazy",
+    );
+
+    const result = response.result as Record<string, unknown>;
+    const content = result.content as Array<Record<string, unknown>>;
+    const parsed = JSON.parse(content[0].text as string);
+    const tools = parsed.data.tools as Array<Record<string, unknown>>;
+    expect(tools).toHaveLength(3);
+    for (const tool of tools) {
+      expect(tool.inputSchema).toBeDefined();
+    }
+  });
+
+  it("unifi_tool_index category filter narrows results", async () => {
+    const relay = createMockRelay(new Map([["loc-1", sampleTools()]]));
+
+    const response = await handleMcpRequest(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "unifi_tool_index", arguments: { search: "client" } },
+      },
+      relay,
+      "lazy",
+    );
+
+    const result = response.result as Record<string, unknown>;
+    const content = result.content as Array<Record<string, unknown>>;
+    const parsed = JSON.parse(content[0].text as string);
+    expect(parsed.data.tools).toHaveLength(1);
+    expect(parsed.data.tools[0].name).toBe("list_clients");
   });
 
   it("tools/call returns error for unknown tool", async () => {
