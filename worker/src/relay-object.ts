@@ -29,6 +29,7 @@ const MAX_LOCATION_NAME_LENGTH = 128;
 
 const META_TOOL_INDEX: ToolInfo = {
   name: "unifi_tool_index",
+  title: "UniFi Tool Index",
   description:
     "Discover available UniFi tools. Returns names and descriptions by default. " +
     "Use 'category' to filter by area (e.g. clients, firewall, devices), " +
@@ -64,6 +65,7 @@ const META_TOOL_INDEX: ToolInfo = {
 
 const META_TOOL_EXECUTE: ToolInfo = {
   name: "unifi_execute",
+  title: "UniFi Execute",
   description:
     "Execute a UniFi tool by name. Use unifi_tool_index to discover available tools first. " +
     "Pass the tool name and its arguments.",
@@ -93,6 +95,7 @@ const META_TOOL_EXECUTE: ToolInfo = {
 
 const META_TOOL_BATCH: ToolInfo = {
   name: "unifi_batch",
+  title: "UniFi Batch",
   description:
     "Execute multiple UniFi tools in a single request. Each call is an object with " +
     "'tool' and 'arguments'. Results are returned in order.",
@@ -125,6 +128,7 @@ const META_TOOL_BATCH: ToolInfo = {
 
 const META_TOOL_LOCATION_TIMELINE: ToolInfo = {
   name: "unifi_location_timeline",
+  title: "UniFi Location Timeline",
   description:
     "Query events across all connected UniFi products (Network, Protect, Access) " +
     "and return a unified, time-sorted timeline. Correlates network events, camera " +
@@ -204,6 +208,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
       CREATE TABLE IF NOT EXISTS location_tools (
         location_id TEXT NOT NULL,
         tool_name TEXT NOT NULL,
+        title TEXT,
         description TEXT NOT NULL DEFAULT '',
         input_schema TEXT,
         annotations TEXT,
@@ -212,6 +217,15 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
         FOREIGN KEY (location_id) REFERENCES locations(location_id)
       );
     `);
+    this.ensureLocationToolsTitleColumn();
+  }
+
+  private ensureLocationToolsTitleColumn(): void {
+    const columns = this.ctx.storage.sql.exec(`PRAGMA table_info(location_tools)`).toArray();
+    const hasTitle = columns.some((column) => column.name === "title");
+    if (!hasTitle) {
+      this.ctx.storage.sql.exec(`ALTER TABLE location_tools ADD COLUMN title TEXT`);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -237,7 +251,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
 
     // Load all tools grouped by location
     const rows = this.ctx.storage.sql.exec(
-      `SELECT lt.location_id, lt.tool_name, lt.description, lt.input_schema, lt.annotations, lt.server_origin
+      `SELECT lt.location_id, lt.tool_name, lt.title, lt.description, lt.input_schema, lt.annotations, lt.server_origin
        FROM location_tools lt
        JOIN locations l ON lt.location_id = l.location_id`,
     ).toArray();
@@ -249,6 +263,9 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
         description: (row.description as string) || "",
       };
 
+      if (row.title) {
+        tool.title = row.title as string;
+      }
       if (row.input_schema) {
         try {
           tool.inputSchema = JSON.parse(row.input_schema as string);
@@ -594,10 +611,11 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
 
     for (const tool of msg.tools) {
       this.ctx.storage.sql.exec(
-        `INSERT INTO location_tools (location_id, tool_name, description, input_schema, annotations, server_origin)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO location_tools (location_id, tool_name, title, description, input_schema, annotations, server_origin)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         locationId,
         tool.name,
+        tool.title || null,
         tool.description || "",
         tool.inputSchema ? JSON.stringify(tool.inputSchema) : null,
         tool.annotations ? JSON.stringify(tool.annotations) : null,
@@ -670,10 +688,11 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
 
     for (const tool of msg.tools) {
       this.ctx.storage.sql.exec(
-        `INSERT INTO location_tools (location_id, tool_name, description, input_schema, annotations, server_origin)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO location_tools (location_id, tool_name, title, description, input_schema, annotations, server_origin)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         locationId,
         tool.name,
+        tool.title || null,
         tool.description || "",
         tool.inputSchema ? JSON.stringify(tool.inputSchema) : null,
         tool.annotations ? JSON.stringify(tool.annotations) : null,
@@ -757,6 +776,7 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
     // Build tool list with location metadata
     const toolEntries: Array<{
       name: string;
+      title?: string;
       description: string;
       locations: string[];
       annotations?: ToolAnnotations;
@@ -774,6 +794,9 @@ export class RelayObject extends DurableObject<Env> implements RelayStub {
             locations: this.toolToLocations.get(tool.name) || [locationId],
             annotations: tool.annotations,
           };
+          if (tool.title) {
+            entry.title = tool.title;
+          }
           if (includeSchemas && tool.inputSchema) {
             entry.inputSchema = tool.inputSchema;
           }

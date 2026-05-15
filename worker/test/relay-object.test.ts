@@ -71,16 +71,19 @@ function createMockRelay(
         return [
           {
             name: "unifi_tool_index",
+            title: "UniFi Tool Index",
             description: "List all available UniFi tools",
             annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
           },
           {
             name: "unifi_execute",
+            title: "UniFi Execute",
             description: "Execute a UniFi tool by name",
             annotations: { readOnlyHint: false, openWorldHint: false },
           },
           {
             name: "unifi_batch",
+            title: "UniFi Batch",
             description: "Execute multiple UniFi tools in a single request",
             annotations: { readOnlyHint: false, openWorldHint: false },
           },
@@ -103,6 +106,9 @@ function createMockRelay(
             locations: toolToLocations.get(t.name) || [],
             annotations: t.annotations,
           };
+          if (t.title) {
+            entry.title = t.title;
+          }
           if (includeSchemas && t.inputSchema) {
             entry.inputSchema = t.inputSchema;
           }
@@ -143,18 +149,21 @@ function sampleTools(): ToolInfo[] {
   return [
     {
       name: "list_clients",
+      title: "List Clients",
       description: "List all connected clients",
       inputSchema: { type: "object", properties: { site: { type: "string" } } },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     {
       name: "list_devices",
+      title: "List Devices",
       description: "List all network devices",
       inputSchema: { type: "object", properties: { type: { type: "string" } } },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     {
       name: "restart_device",
+      title: "Restart Device",
       description: "Restart a network device",
       inputSchema: { type: "object", properties: { mac: { type: "string" } } },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
@@ -177,6 +186,7 @@ describe("getAggregatedTools", () => {
     const result = relay.getAggregatedTools();
     expect(result).toHaveLength(3);
     expect(result.map((t) => t.name)).toEqual(["list_clients", "list_devices", "restart_device"]);
+    expect(result.map((t) => t.title)).toEqual(["List Clients", "List Devices", "Restart Device"]);
   });
 
   it("deduplicates tools that appear in multiple locations", () => {
@@ -219,6 +229,14 @@ describe("getAggregatedTools", () => {
     expect(result).toHaveLength(1);
     expect(result[0].description).toBe("From location 1");
   });
+
+  it("keeps title metadata when tools are aggregated", () => {
+    const relay = createMockRelay(
+      new Map([["loc-1", [{ name: "list_clients", title: "List Clients", description: "List clients" }]]]),
+    );
+
+    expect(relay.getAggregatedTools()[0].title).toBe("List Clients");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -234,6 +252,7 @@ describe("getToolList", () => {
     expect(names).toContain("unifi_tool_index");
     expect(names).toContain("unifi_execute");
     expect(names).toContain("unifi_batch");
+    expect(tools.find((tool) => tool.name === "unifi_tool_index")?.title).toBe("UniFi Tool Index");
   });
 
   it("returns meta-tools in meta_only mode", async () => {
@@ -367,6 +386,7 @@ describe("MCP handler with relay stub", () => {
     const parsed = JSON.parse(content[0].text as string);
     expect(parsed.success).toBe(true);
     expect(parsed.data.tools).toHaveLength(3);
+    expect(parsed.data.tools[0].title).toBe("List Clients");
     expect(parsed.data.multi_location).toBe(false);
   });
 

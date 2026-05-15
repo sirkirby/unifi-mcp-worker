@@ -30,8 +30,17 @@ describe("initialize", () => {
 
     const result = response.result as Record<string, unknown>;
     expect(result.protocolVersion).toBe("2025-03-26");
-    expect((result.serverInfo as Record<string, unknown>).name).toBe("unifi-mcp-relay");
-    expect((result.serverInfo as Record<string, unknown>).version).toBe("1.0.0");
+    const serverInfo = result.serverInfo as Record<string, unknown>;
+    expect(serverInfo.name).toBe("unifi-mcp-relay");
+    expect(serverInfo.version).toBe("1.0.0");
+    expect(serverInfo.websiteUrl).toBe("https://github.com/sirkirby/unifi-mcp");
+    expect(serverInfo.icons).toEqual([
+      expect.objectContaining({
+        src: expect.stringMatching(/^data:image\/svg\+xml,/),
+        mimeType: "image/svg+xml",
+        sizes: ["192x192"],
+      }),
+    ]);
     expect(result.capabilities).toEqual({ tools: {} });
   });
 });
@@ -57,7 +66,7 @@ describe("notifications/initialized", () => {
 describe("tools/list", () => {
   it("calls stub.getToolList with the provided mode when single-location", async () => {
     const tools: ToolInfo[] = [
-      { name: "list_clients", description: "List all clients" },
+      { name: "list_clients", title: "List Clients", description: "List all clients" },
     ];
     const stub = mockStub({
       getToolList: vi.fn().mockResolvedValue(tools),
