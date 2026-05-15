@@ -1,5 +1,10 @@
 # UniFi MCP Relay Worker
 
+> **Archived:** This repository has moved into the UniFi MCP monorepo at
+> [`sirkirby/unifi-mcp/apps/worker`](https://github.com/sirkirby/unifi-mcp/tree/main/apps/worker).
+> Future source changes, issues, pull requests, and releases are managed there.
+> This repository is kept only as a historical pointer before GitHub archival.
+
 A Cloudflare Worker that enables cloud agents to access locally-hosted UniFi MCP servers via a secure relay gateway.
 
 ---
@@ -32,7 +37,7 @@ The Durable Object persists location registrations in SQLite and maintains live 
 ### Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sirkirby/unifi-mcp-worker/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sirkirby/unifi-mcp/main/apps/worker/install.sh | bash
 ```
 
 Or install the CLI directly:
@@ -207,4 +212,5 @@ Read-only operations (tools with `readOnlyHint: true`) are automatically fanned 
 
 ## Related
 
-- [unifi-mcp](https://github.com/sirkirby/unifi-mcp) — UniFi MCP server and `unifi-mcp-relay` client that connects to this relay worker
+- [unifi-mcp/apps/worker](https://github.com/sirkirby/unifi-mcp/tree/main/apps/worker) — active source for this Cloudflare Worker gateway and npm CLI
+- [unifi-mcp](https://github.com/sirkirby/unifi-mcp) — UniFi MCP servers and `unifi-mcp-relay` sidecar
