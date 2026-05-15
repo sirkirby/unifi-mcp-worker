@@ -1,5 +1,6 @@
 // src/mcp-handler.ts
 import type { JsonRpcRequest, JsonRpcResponse, ToolInfo, AggregatedResponse } from "./types";
+import { PROJECT_WEBSITE_URL, RELAY_SERVER_ICONS } from "./types";
 
 /** Interface that the Durable Object will implement */
 export interface RelayStub {
@@ -26,7 +27,12 @@ export async function handleMcpRequest(
   if (method === "initialize") {
     return jsonRpcResult(id, {
       protocolVersion: "2025-03-26",
-      serverInfo: { name: "unifi-mcp-relay", version: "1.0.0" },
+      serverInfo: {
+        name: "unifi-mcp-relay",
+        version: "1.0.0",
+        websiteUrl: PROJECT_WEBSITE_URL,
+        icons: RELAY_SERVER_ICONS,
+      },
       capabilities: { tools: {} },
     });
   }

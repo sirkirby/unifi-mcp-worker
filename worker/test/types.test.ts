@@ -5,6 +5,8 @@ import {
   TOOL_CALL_TIMEOUT_MS,
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_ACK_TIMEOUT_MS,
+  PROJECT_WEBSITE_URL,
+  RELAY_SERVER_ICONS,
 } from "../src/types";
 
 describe("types constants", () => {
@@ -34,5 +36,16 @@ describe("types constants", () => {
       expect(c).toBeGreaterThan(0);
       expect(Number.isInteger(c)).toBe(true);
     }
+  });
+
+  it("relay MCP metadata constants are stable and self-contained", () => {
+    expect(PROJECT_WEBSITE_URL).toBe("https://github.com/sirkirby/unifi-mcp");
+    expect(RELAY_SERVER_ICONS).toEqual([
+      expect.objectContaining({
+        src: expect.stringMatching(/^data:image\/svg\+xml,/),
+        mimeType: "image/svg+xml",
+        sizes: ["192x192"],
+      }),
+    ]);
   });
 });

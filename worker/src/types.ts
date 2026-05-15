@@ -9,6 +9,24 @@ export const PROTOCOL_VERSION = 1;
 export const TOOL_CALL_TIMEOUT_MS = 30_000;
 export const HEARTBEAT_INTERVAL_MS = 30_000;
 export const HEARTBEAT_ACK_TIMEOUT_MS = 10_000;
+export const PROJECT_WEBSITE_URL = "https://github.com/sirkirby/unifi-mcp";
+
+export interface IconInfo {
+  src: string;
+  mimeType?: string;
+  sizes?: string[];
+}
+
+const RELAY_ICON_SRC =
+  "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20192%20192%22%3E%3Crect%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2238%22%20fill%3D%22%23111827%22%2F%3E%3Cpath%20d%3D%22M54%2096h84M96%2054v84%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%2214%22%20stroke-linecap%3D%22round%22%2F%3E%3Ccircle%20cx%3D%2254%22%20cy%3D%2296%22%20r%3D%2218%22%20fill%3D%22%2322c55e%22%2F%3E%3Ccircle%20cx%3D%22138%22%20cy%3D%2296%22%20r%3D%2218%22%20fill%3D%22%2322c55e%22%2F%3E%3Ccircle%20cx%3D%2296%22%20cy%3D%2254%22%20r%3D%2218%22%20fill%3D%22%2322c55e%22%2F%3E%3Ccircle%20cx%3D%2296%22%20cy%3D%22138%22%20r%3D%2218%22%20fill%3D%22%2322c55e%22%2F%3E%3C%2Fsvg%3E";
+
+export const RELAY_SERVER_ICONS: IconInfo[] = [
+  {
+    src: RELAY_ICON_SRC,
+    mimeType: "image/svg+xml",
+    sizes: ["192x192"],
+  },
+];
 
 // ---------------------------------------------------------------------------
 // Environment (Cloudflare bindings)
@@ -34,6 +52,7 @@ export interface ToolAnnotations {
 
 export interface ToolInfo {
   name: string;
+  title?: string;
   description: string;
   inputSchema?: Record<string, unknown>;
   annotations?: ToolAnnotations;
